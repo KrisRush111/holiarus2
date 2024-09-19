@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holiarus: Прыжковое приключение</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+            background-color: #222;
+            margin: 0 auto;
+            width: 100%;
+            height: auto;
+        }
+        #controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .touch-controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .touch-button {
+            background-color: #444;
+            border: none;
+            color: white;
+            padding: 15px;
+            margin: 5px;
+            font-size: 18px;
+            border-radius: 5px;
+        }
+        #scoreboard {
+            text-align: center;
+            font-size: 24px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center;">Holiarus: Прыжковое приключение</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="controls">
+        <p>Используйте <b>Стрелку влево</b> и <b>Стрелку вправо</b> для перемещения, <b>Пробел</b> для прыжка или кнопки ниже.</p>
+    </div>
+
+    <div id="scoreboard">Собрано кристаллов: 0</div>
+
+    <!-- Кнопки для мобильных устройств -->
+    <div class="touch-controls">
+        <button class="touch-button" id="leftButton">Влево</button>
+        <button class="touch-button" id="jumpButton">Прыжок</button>
+        <button class="touch-button" id="rightButton">Вправо</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Основные параметры игры
+        const gravity = 0.5;
+        const jumpForce = -10;
+        let platformCount = 0;
+        let crystalScore = 0;
+        let gameOver = false;
+        let level = 1; // Уровень сложности
+        const platformVerticalGap = 80; // Вертикальное расстояние между платформами
+        const minHorizontalGap = 50;
+        const maxHorizontalGap = 200;
+
+        // Игрок
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 60,
+            width: 50,
+            height: 50,
+            speedX: 0,
+            speedY: 0,
+            onGround: false,
+            color: '#00f'
+        };
+
+        // Платформы
+        let platforms = [
+            { x: 150, y: canvas.height - 50, width: 100, height: 20, hasCrystal: false },
+            { x: 300, y: canvas.height - 150, width: 100, height: 20, hasCrystal: false },
+            { x: 500, y: canvas.height - 250, width: 100, height: 20, hasCrystal: false },
+            { x: 250, y: canvas.height - 350, width: 100, height: 20, hasCrystal: false },
+            { x: 400, y: canvas.height - 450, width: 100, height: 20, hasCrystal: false }
+        ];
+
+        // Кристаллы
+        let crystals = [];
+
+        // Клавиши управления
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        // Обработка клавиатуры
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'Space') keys.jump = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'ArrowRight') keys.right = false;
+            if (e.code === 'Space') keys.jump = false;
+        });
+
+        // Тач-контроллеры
+        document.getElementById('leftButton').addEventListener('touchstart', () => keys.left = true);
+        document.getElementById('leftButton').addEventListener('touchend', () => keys.left = false);
+        
+        document.getElementById('rightButton').addEventListener('touchstart', () => keys.right = true);
+        document.getElementById('rightButton').addEventListener('touchend', () => keys.right = false);
+        
+        document.getElementById('jumpButton').addEventListener('touchstart', () => keys.jump = true);
+        document.getElementById('jumpButton').addEventListener('touchend', () => keys.jump = false);
+
+        // Обновление счётчика кристаллов
+        function updateScore() {
+            document.getElementById('scoreboard').textContent = `Собрано кристаллов: ${crystalScore}`;
+        }
+
+        // Функция создания новой платформы
+        function createPlatform() {
+            const lastPlatform = platforms[platforms.length - 1];
+            const platformWidth = Math.max(100 - level * 5, 50);
+            const platformX = Math.random() * (canvas.width - platformWidth);
+            const platformY = lastPlatform.y - platformVerticalGap;
+
+            // Проверка горизонтального расстояния
+            if (lastPlatform) {
+                const horizontalGap = Math.abs(platformX - lastPlatform.x);
+                if (horizontalGap < minHorizontalGap || horizontalGap > maxHorizontalGap) {
+                    return createPlatform();
+                }
+            }
+
+            platforms.push({ x: platformX, y: platformY, width: platformWidth, height: 20, hasCrystal: false });
+        }
+
+        // Функция создания нового кристалла на платформе
+        function createCrystal() {
+            // Находим платформу, на которой еще нет кристалла
+            const availablePlatforms = platforms.filter(platform => !platform.hasCrystal);
+            if (availablePlatforms.length === 0) return; // Если нет доступных платформ
+
+            const platform = availablePlatforms[Math.floor(Math.random() * availablePlatforms.length)];
+            const crystalX = platform.x + Math.random() * (platform.width - 20);
+            const crystalY = platform.y - 20;
+
+            crystals.push({ x: crystalX, y: crystalY, width: 20, height: 20, collected: false });
+            platform.hasCrystal = true; // Помечаем платформу как занятую кристаллом
+        }
+
+        // Обновление состояния игрока
+        function updatePlayer() {
+            if (gameOver) return;
+
+            // Движение влево и вправо
+            if (keys.left) player.speedX = -5;
+            if (keys.right) player.speedX = 5;
+            if (!keys.left && !keys.right) player.speedX = 0;
+
+            // Прыжок
+            if (keys.jump && player.onGround) {
+                player.speedY = jumpForce;
+                player.onGround = false;
+            }
+
+            // Применение гравитации
+            player.speedY += gravity;
+            player.x += player.speedX;
+            player.y += player.speedY;
+
+            // Границы экрана
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+            if (player.y + player.height > canvas.height) {
+                player.y = canvas.height - player.height;
+                player.speedY = 0;
+                player.onGround = true;
+            }
+
+            // Проверка коллизии с платформами
+            platforms.forEach((platform, index) => {
+                if (player.x < platform.x + platform.width &&
+                    player.x + player.width > platform.x &&
+                    player.y + player.height < platform.y + platform.height &&
+                    player.y + player.height > platform.y) {
+                    player.speedY = 0;
+                    player.y = platform.y - player.height;
+                    player.onGround = true;
+                }
+
+                // Удаление платформ, если они уходят за нижнюю границу
+                if (platform.y > canvas.height) {
+                    platforms.splice(index, 1);
+                    platformCount++;
+                }
+            });
+
+            // Проверка сбора кристаллов
+            crystals.forEach((crystal, index) => {
+                if (!crystal.collected &&
+                    player.x < crystal.x + crystal.width &&
+                    player.x + player.width > crystal.x &&
+                    player.y < crystal.y + crystal.height &&
+                    player.y + player.height > crystal.y) {
+                    crystal.collected = true;
+                    crystalScore++;
+                    updateScore();
+                }
+
+                // Удаление кристаллов, если они уходят за нижнюю границу
+                if (crystal.y > canvas.height) {
+                    crystals.splice(index, 1);
+                }
+            });
+
+            // Создание новых платформ и кристаллов по мере подъёма
+            if (player.y < canvas.height / 2) {
+                platforms.forEach(platform => platform.y += 7);
+                crystals.forEach(crystal => crystal.y += 7);
+
+                player.y += 7;
+
+                if (Math.random() < 0.1) createPlatform();
+                if (Math.random() < 0.1) createCrystal(); // Увеличена вероятность создания кристаллов
+            }
+
+            // Увеличение уровня сложности
+            if (platformCount >= 15 * level) {
+                level++;
+                platformCount = 0;
+            }
+        }
+
+        // Отрисовка объектов
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Игрок
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Платформы
+            platforms.forEach(platform => {
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+            });
+
+            // Кристаллы
+            crystals.forEach(crystal => {
+                if (!crystal.collected) {
+                    ctx.fillStyle = '#0f0';
+                    ctx.fillRect(crystal.x, crystal.y, crystal.width, crystal.height);
+                }
+            });
+        }
+
+        // Главный игровой цикл
+        function gameLoop() {
+            updatePlayer();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+
+</body>
+</html>
